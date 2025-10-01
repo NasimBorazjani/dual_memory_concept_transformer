@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Fixed Training Script with all requested changes:
-- Per-step loss accounting for fair contributions
-- Adjacency pairs from model for positive examples
-- Best checkpoint only
-- Complete plotting with all metrics
-- Attention capture at configurable intervals
-- No residual alpha (only memory gate)
-"""
+"""Training loop for the dual-memory transformer model."""
 
 import os
 import sys
@@ -23,8 +15,6 @@ from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional
 from collections import defaultdict, deque
 
-from operator import pos
-from sklearn import metrics
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -46,16 +36,15 @@ from inference_rollout import rollout_from_loader
 from sentence_splitter import create_token_based_sentence_splitter
 from create_datasets import (
     extract_all_documents_from_files,
-    # split_documents_by_weight,            # (no longer used here)
-    split_documents_by_length_3buckets,     # <-- NEW
+    split_documents_by_length_3buckets,
     process_documents_for_training,
     chunk_processed_documents,
     create_analysis_report,
-    compute_full_dataset_analysis,          # existing, unchanged
-    write_analysis_files,                   # existing, unchanged
+    compute_full_dataset_analysis,
+    write_analysis_files,
     compute_essential_dataset_stats,
     write_sample_docs,
-    write_split_sentence_samples
+    write_split_sentence_samples,
 )
 
 
@@ -566,7 +555,7 @@ class SRepDiagnostics:
         self.buffer_size = buffer_size
         self.explode_threshold = explode_threshold
 
-        # NEW: diversity controls
+        # Diversity controls
         self.diversity_sample_size = max(32, int(diversity_sample_size))
         self.diversity_every = max(1, int(diversity_every))
         self._steps_since_diversity = 0
@@ -624,7 +613,7 @@ class SRepDiagnostics:
         # Maintain reservoir
         self._reservoir_add(s_reps)
 
-        # Batch-level max similarity (unchanged behavior)
+        # Batch-level max similarity
         if s_reps.size(0) > 1:
             Zb = F.normalize(s_reps, p=2, dim=1)
             Mb = (Zb @ Zb.t())
@@ -633,7 +622,7 @@ class SRepDiagnostics:
         else:
             metrics['max_similarity'] = 0.0
 
-        # NEW: Diversity over reservoir (throttled)
+        # Diversity over reservoir (throttled)
         self._steps_since_diversity += 1
         if self._steps_since_diversity >= self.diversity_every:
             self._steps_since_diversity = 0
@@ -1059,7 +1048,6 @@ def collate_documents(batch: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 # Evaluation (with per-component losses + perplexities)
 # -----------------------------
 @torch.no_grad()
-@torch.no_grad()
 def evaluate(
     model: SentenceTransformer,
     ltm: Optional[LongTermMemoryGPU],
@@ -1069,7 +1057,7 @@ def evaluate(
     aux_losses: Optional[Dict[str, nn.Module]] = None,
     args: Optional[argparse.Namespace] = None,
     aux_weight_mult: float = 1.0,
-    # NEW: debug writing controls
+    # Debug writing controls
     debug_dump_dir: Optional[str] = None,
     debug_dump_n_sentences: int = 5,
     debug_dump_n_docs: int = 5,
@@ -1133,7 +1121,7 @@ def evaluate(
         srep_embs_all, srep_texts_all, srep_doc_ids_all = [], [], []
 
         with autocast(enabled=amp_enabled):
-            for step_rec in model.iter_document_steps_fixed(
+            for step_rec in model.iter_document_steps(
                 batch_docs,
                 ltm=eval_ltm,
                 warmup_weight=memory_weight,
@@ -1639,7 +1627,7 @@ def main():
     ap.add_argument("--stm_grad_limit", type=int, default=100,
                     help="Max number of STM S_REP refs to keep per measurement window.")
 
-    # NEW: component grad capture (Cross-Attn / Self-Attn / FFN / LayerNorm)
+    # Component grad capture (Cross-Attn / Self-Attn / FFN / LayerNorm)
     ap.add_argument("--comp_grad_every", type=int, default=5000,
                     help="Collect component gradient refs every N global steps (0 disables).")
     ap.add_argument("--comp_grad_limit", type=int, default=100,
@@ -1815,7 +1803,7 @@ def main():
         if not has_train: missing.append("train/")
         if not has_val:   missing.append("val/")
         logger.info(
-            "⚠️  Explicit split directories not found (missing: %s). "
+            "Explicit split directories not found (missing: %s). "
             "Falling back to internal, document-balanced split.",
             ", ".join(missing) if missing else "(none)"
         )
@@ -1830,7 +1818,7 @@ def main():
             max_chars_per_doc=args.max_chars_per_doc
         )
 
-        # Persist/reuse the doc-balanced split via SplitManifest (unchanged)
+        # Persist and reuse the doc-balanced split via SplitManifest
         split_params = {
             "method": "length_3buckets",
             "train_val_split": 0.9,
@@ -1905,7 +1893,6 @@ def main():
         'chunk_overlap': args.chunk_overlap,
         'tokenizer_vocab_size': final_vocab_size,
         'special_tokens': [tokenizer.pad_token, tokenizer.eos_token, '[S_REP]'],
-        # NEW:
         'min_sentence_tokens': args.min_sentence_tokens,
     }
 
@@ -1989,7 +1976,7 @@ def main():
     # ----- WRITE ANALYSIS FILES (ONLY when freshly built) -----
     # Train
     if train_built_fresh:
-        # Full analysis (your original metrics, unchanged)
+        # Full dataset analysis
         analysis_train_full = compute_full_dataset_analysis("train", train_examples)
         write_analysis_files(em.path("cache"), "train", train_cache_key, analysis_train_full)
 
@@ -2006,7 +1993,7 @@ def main():
 
     # Val
     if val_built_fresh:
-        # Full analysis (your original metrics, unchanged)
+        # Full dataset analysis
         analysis_val_full = compute_full_dataset_analysis("val", val_examples)
         write_analysis_files(em.path("cache"), "val", val_cache_key, analysis_val_full)
 
@@ -2391,7 +2378,7 @@ def main():
                     warmup_schedule.get_context_dropout(global_step)
                     if dropout_enabled else 0.0
                 )
-                for sent_idx, step_rec in enumerate(model.iter_document_steps_fixed(
+                for sent_idx, step_rec in enumerate(model.iter_document_steps(
                     batch_docs,
                     ltm=ltm,
                     warmup_weight=memory_weight_now,
@@ -2490,7 +2477,7 @@ def main():
                     # ---------- AUX LOSSES ----------
                     step_aux_losses = {}
 
-                    # BoW targets from token IDs (unchanged)
+                    # BoW targets from token IDs
                     bow_targets_ids: List[List[int]] = []
                     if srep_embs_step.numel() > 0:
                         for i in range(ids.size(0)):
@@ -2512,7 +2499,7 @@ def main():
                             running_bow_acc += bow_acc * max(1, len(bow_targets_ids))
                             running_bow_count += max(1, len(bow_targets_ids))
 
-                    # Adjacency (only after 'adjacency_start_step'; unchanged)
+                    # Adjacency loss applies after 'adjacency_start_step'
                     if 'adjacency' in aux_losses and adj_sreps_step.size(0) > 1:
                         if global_step >= args.adjacency_start_step:
                             adj_loss_val = aux_losses['adjacency'](adj_sreps_step, adj_doc_ids_step)
@@ -2550,7 +2537,7 @@ def main():
 
                             running_align_step_sum += float(align_loss_weighted.item())
                             running_align_step_count += 1
-                            running_align_acc += float(align_acc)   # <-- was align_acc_val
+                            running_align_acc += float(align_acc)
                             running_align_count += 1
                         else:
                             step_aux_losses['alignment'] = torch.tensor(0.0, device=device)
@@ -2561,24 +2548,19 @@ def main():
                     running_normreg_step_sum += float(srep_norm_reg_loss.item())
                     running_normreg_step_count += 1
 
-                    # ---------- GATE REG: very gentle ----------
-                    """gate_reg = gate_regularizer_loss(model)
-                    running_gate_reg_step_sum += float(gate_reg.item())
-                    running_gate_reg_step_count += 1"""
-
                     # Total step loss (under autocast)
-                    step_loss = step_main_loss + srep_norm_reg_loss #+ gate_reg
+                    step_loss = step_main_loss + srep_norm_reg_loss
                     for aux_loss in step_aux_losses.values():
                         step_loss = step_loss + aux_loss
                     step_losses.append(step_loss)
 
-                    # Collect S_REPs for LTM update & diagnostics (unchanged)
+                    # Collect S_REPs for LTM updates and diagnostics
                     if srep_embs_step.numel() > 0:
                         srep_embs_all.append(srep_embs_step)
                         srep_texts_all.extend(srep_texts_step)
                         srep_doc_ids_all.extend(srep_doc_ids_step)
 
-                    # Aggregate stats (unchanged)
+                    # Aggregate LTM and query comparison stats
                     for block_idx, stats in ltm_stats_step.items():
                         batch_ltm_stats.setdefault(block_idx, []).append(stats)
                     for block_idx, stats in query_comp_step.items():
@@ -2689,8 +2671,7 @@ def main():
                         elapsed = time.time() - t0
                         metrics["steps_per_second"].append(global_step / max(1e-9, elapsed))
 
-                    # Evaluation cadence (unchanged)
-                    # -------- Evaluation cadence (now with perplexity reporting) --------
+                    # -------- Evaluation cadence --------
                     if global_step % args.eval_every == 0:
                         memory_weight_eval = warmup_schedule.get_memory_weight(global_step)
                         aux_mult_now = warmup_schedule.get_aux_weight_multiplier(global_step)
@@ -2852,24 +2833,14 @@ def main():
                 scale = float(scaler.get_scale()) if amp_enabled else 1.0
                 unscale = (scale if scale > 0.0 else 1.0)
 
-                # STM S_REP grad probe (unchanged, but unscaled)
+                # STM S_REP grad probe (AMP-aware)
                 for step_idx, mean_norm in probe.measure_and_reset():
                     mean_norm /= unscale
                     metrics.setdefault("stm_srep_grad_steps", []).append(int(step_idx))
                     metrics.setdefault("stm_srep_grad", []).append(float(mean_norm))
 
 
-                # Current AMP scale (for unscaling)
-                scale = float(scaler.get_scale()) if amp_enabled else 1.0
-                unscale = (scale if scale > 0.0 else 1.0)
-
-                # STM S_REP grad probe (unchanged)
-                for step_idx, mean_norm in probe.measure_and_reset():
-                    mean_norm /= unscale
-                    metrics.setdefault("stm_srep_grad_steps", []).append(int(step_idx))
-                    metrics.setdefault("stm_srep_grad", []).append(float(mean_norm))
-
-                # -------- NEW: parameter-level component grad norms --------
+                # -------- Parameter-level component grad norms --------
                 # Only sample at your cadence to keep overhead negligible
                 if will_probe_comp:
                     avg, blk0, blklast = collect_param_component_grad_norms(model)

@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Fixed Sentence-level Transformer with all requested changes:
-- Attention capture fixed (average_attn_weights=False)
-- NO residual alpha - only memory gate
-- STM positional encoding: L2-scaled, keys-only
-- Adjacency pairs generation for loss
-"""
+"""Sentence-level transformer with dual-memory components."""
 
 from dataclasses import dataclass
 from typing import List, Tuple, Optional, Dict, Deque, Any
@@ -21,7 +15,6 @@ import torch.nn.functional as F
 # -----------------------------
 # Configuration
 # -----------------------------
-from dataclasses import dataclass
 
 @dataclass
 class SentenceTransformerConfig:
@@ -695,7 +688,7 @@ class SentenceTransformer(nn.Module):
         k_stm_mask = torch.stack(k_stm_masks, dim=0)     # [B, K_max]
         return k_stm_vals, k_stm_keys, k_stm_mask
 
-    def iter_document_steps_fixed(
+    def iter_document_steps(
         self,
         documents: List[Dict[str, Any]],
         ltm: Optional["LongTermMemoryGPU"] = None,
@@ -722,11 +715,7 @@ class SentenceTransformer(nn.Module):
         need_alignment_features: bool = False,
         need_stm_means: bool = False,
     ):
-        """
-        Same API as before + 'context_dropout_now'.
-        Retrieval queries are explicitly computed from dropout-free features.
-        STM entries are stored without detach so grads flow from future token prediction.
-        """
+        """Iterate over sentence steps while emitting model outputs and diagnostics."""
         device = next(self.parameters()).device
         L = self.cfg.max_position_embeddings
 
@@ -1287,8 +1276,3 @@ class SentenceTransformer(nn.Module):
 
             yield out_rec
             emitted_steps += 1
-
-
-# keep alias
-def iter_document_steps(self, *args, **kwargs):
-    return self.iter_document_steps_fixed(*args, **kwargs)

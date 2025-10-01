@@ -383,7 +383,7 @@ def rollout_from_loader(
     stm_size = 0
     if context_sentences:
         priming_records = list(
-            model.iter_document_steps_fixed(
+            model.iter_document_steps(
                 [context_doc],
                 ltm=None,
                 warmup_weight=1.0,
@@ -452,7 +452,7 @@ def rollout_from_loader(
                 "doc_id": context_doc.get("doc_id", "unknown"),
             }
             step_records = list(
-                model.iter_document_steps_fixed(
+                model.iter_document_steps(
                     [pseudo_doc],
                     ltm=None,
                     warmup_weight=1.0,
@@ -498,7 +498,7 @@ def rollout_from_loader(
             "doc_id": context_doc.get("doc_id", "unknown"),
         }
         final_records = list(
-            model.iter_document_steps_fixed(
+            model.iter_document_steps(
                 [pseudo_doc_final],
                 ltm=None,
                 warmup_weight=1.0,

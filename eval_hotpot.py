@@ -380,7 +380,7 @@ def _inject_question_sentence(
 
 def _run_steps(model, ltm, documents, device) -> Dict[str, Any]:
     last = None
-    for rec in model.iter_document_steps_fixed(
+    for rec in model.iter_document_steps(
         [documents],
         ltm=ltm,
         warmup_weight=1.0,

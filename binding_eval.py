@@ -121,7 +121,7 @@ def next_token_logits_two_sentence(
 ) -> torch.Tensor:
     """
     Build a one-document example with exactly two sentences and run through
-    model.iter_document_steps_fixed(...). Return logits at the position right
+    model.iter_document_steps(...). Returns logits at the position right
     after the query prefix (B=1, V) as a CPU tensor.
     """
     device = next(model.parameters()).device
@@ -140,7 +140,7 @@ def next_token_logits_two_sentence(
         "original_doc_id": "eval_doc",
     }
 
-    gen = model.iter_document_steps_fixed([ex], ltm=ltm, warmup_weight=1.0, collect_debug=False)
+    gen = model.iter_document_steps([ex], ltm=ltm, warmup_weight=1.0, collect_debug=False)
     _ = next(gen)   # step 1: context -> S_REP goes to STM
     step2 = next(gen)  # step 2: query prefix -> logits we need
 
@@ -182,7 +182,7 @@ def next_token_logits_single_segment(
         "sentence_texts":  [combined],
         "original_doc_id": "eval_doc",
     }
-    step = next(model.iter_document_steps_fixed([ex], ltm=ltm, warmup_weight=1.0, collect_debug=False))
+    step = next(model.iter_document_steps([ex], ltm=ltm, warmup_weight=1.0, collect_debug=False))
     return step["logits"][0, pref_len - 1, :].detach().cpu()
 
 # --------------- run-dir loaders ---------------

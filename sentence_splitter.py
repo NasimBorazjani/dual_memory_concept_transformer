@@ -1,7 +1,5 @@
 #!/usr/bin/env python
-"""
-Fixed sentence splitter module with consistent token-based length limits.
-"""
+"""Sentence splitter module with token-based length limits."""
 import re
 import torch
 import logging
