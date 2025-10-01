@@ -1543,7 +1543,7 @@ def main():
     # -----------------------------
     # Experiment
     # -----------------------------
-    ap.add_argument("--output_dir", type=str, default="experiments21_speedup_srepEQdm_memGates")
+    ap.add_argument("--output_dir", type=str, default="experiments")
     ap.add_argument("--exp_name", type=str, default="run")
 
     # -----------------------------
