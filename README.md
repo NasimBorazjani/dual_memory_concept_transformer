@@ -15,7 +15,7 @@ Sample datasets live under `data_wikitext/` and `hotpot_data/`. Large training c
 1. Install dependencies from `requirements.txt` (or replicate the environment used during experiments).
 2. Launch training:
    ```bash
-   python train.py --config your_config.json
+   python train.py --data_dir {PATH_TO_YOUR_DATA} --debug_stm_only
    ```
 3. Use `inference_rollout.py` or the evaluation scripts to inspect sentence-level behaviour.
 
